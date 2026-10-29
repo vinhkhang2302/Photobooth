@@ -1,0 +1,25 @@
+@'
+# Dependencies
+**/node_modules/
+
+# Build output
+**/dist/
+
+# Environment files and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS and editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local database files
+data/db/
+'@ | Set-Content -Path .gitignore -Encoding ascii
