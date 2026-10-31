@@ -61,9 +61,28 @@ Trạng thái thu/hoàn tiền (tách riêng, theo từng payment/refund record)
 | V08-12 | Chỉ khách có đơn **COMPLETED** được đánh giá; **một đánh giá gốc/đơn, không sửa sau khi gửi**; có cơ chế báo cáo và admin ẩn/kiểm duyệt kèm lý do + audit log. |
 | Audit | Mọi thao tác nhạy cảm (admin duyệt/tạm ngưng studio, studio xác nhận cọc/số dư/hoàn, điều chỉnh đối soát, tranh chấp, kiểm duyệt đánh giá) **ghi audit log**. |
 
-## 7. Mô hình dữ liệu hướng dẫn (định hướng, chưa phải thiết kế cuối)
+## 7. Mô hình dữ liệu (ánh xạ kỹ thuật database — đã hợp nhất với `docs/database-design.md`, giai đoạn 2A.3)
 
-Collections dự kiến: `users`, `studios`, `studioMembers`, `rooms`, `services`, `availabilityRules`, `availabilityExceptions`, `bookings` (nhiều items/phòng, snapshot giá + chính sách, deadline phản hồi/thanh toán), `payments` (purpose DEPOSIT/BALANCE/REFUND, method CASH/BANK_TRANSFER_QR, idempotency), `notifications`, `auditLogs`, `reviews`, `commissions`. MongoDB Compass dùng để xem/quản lý dữ liệu.
+Đây là **ánh xạ kỹ thuật** của 14 collection MongoDB, **không thay đổi nghiệp vụ v0.8**. Chi tiết schema, index, validation và transaction nằm trong `docs/database-design.md`. MongoDB Compass dùng để xem/quản lý dữ liệu.
+
+| # | Collection | Ghi chú ngắn |
+|---|---|---|
+| 1 | `users` | Tài khoản (khách, chủ/nhân viên studio, admin) |
+| 2 | `studios` | Hồ sơ + **`scheduling` (lịch tuần, A6)** + thanh toán + trạng thái (A7) + `needsMoreInfo` (M1) |
+| 3 | `studioMembers` | Phân quyền chủ/nhân viên |
+| 4 | `rooms` | Phòng (tài nguyên có lịch riêng) |
+| 5 | `services` | Gói/dịch vụ (gồm phòng hoặc add-on) |
+| 6 | `availabilityExceptions` | Ngày nghỉ/ngày đặc biệt/khoảng khóa lịch, scope STUDIO/ROOM (A6, M3) |
+| 7 | `bookings` | Đơn nhiều phòng (1 studio), snapshot giá/chính sách/hoa hồng, 3 trạng thái tách |
+| 8 | `slotLocks` | **Lưới slot 15 phút + unique index chống đặt trùng (A2)** |
+| 9 | `payments` | Giao dịch DEPOSIT/BALANCE/REFUND (record riêng, tiền không âm) |
+| 10 | `commissions` | Hoa hồng + đối soát tháng (idempotent, điều chỉnh có lịch sử) |
+| 11 | `reviews` | Đánh giá (1/đơn COMPLETED, không sửa) |
+| 12 | `incidents` | **(M2) Sự cố booking** — có incident chưa giải quyết → không tự COMPLETED |
+| 13 | `notifications` | **(M6) Thông báo WEB + EMAIL** — theo dõi gửi PENDING/SENT/FAILED, backoff |
+| 14 | `auditLogs` | Nhật ký thao tác nhạy cảm (gồm lỗi email thất bại) |
+
+> Ghi chú: collection `availabilityRules` (kế hoạch v0.8 cũ) **đã bỏ** vì lịch tuần nằm trong `studios.scheduling` theo A6. Bổ sung `slotLocks` (A2) và `incidents` (M2) so với danh sách dự kiến ban đầu.
 
 ## 8. Phạm vi MVP vs. để giai đoạn sau
 
