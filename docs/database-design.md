@@ -83,6 +83,18 @@ Ví dụ:
 | `maxDurationMinutes` | Number (30..480, bước 30) | B | mặc định 240 (4 giờ), trần 480 (8 giờ) (V08-02) |
 | `bufferMinutes` | Enum: 0, 15, 30 (M5, đã duyệt) | B | **M5: chỉ nhận 0, 15 hoặc 30** (bội số 15 để giữ lưới slot A2 không bị phá); mặc định 15, cho phép 0 (V08-08/09; A2: buffer luôn được giữ). Giá trị khác bị từ chối ở backend. |
 
+**Quy tắc cấu hình scheduling (chốt 2B.1a, được kiểm tra ở tầng Mongoose):**
+- **Mỗi ngày DUY NHẤT 1 khung giờ:** `weekdays` không chứa 2 entry cùng `weekday` (G2) — khung khả dụng của một ngày là `[openMinutes, closeMinutes]` (hợp nhất union với các ngoại lệ `EXTENDED` theo M3), không phải danh sách nhiều khung.
+- **`weekday` nguyên, ISO 1–7** (G3): giá trị 1.5, 0, 8 bị từ chối (M4).
+- **`openMinutes`/`closeMinutes` nguyên, trong `[0, 1440]`, `open < close`** (G4): cho phép `closeMinutes = 1440` (24:00); từ chối giá trị âm, thập phân, > 1440.
+- **`minDurationMinutes <= maxDurationMinutes`** (G1): khi cả hai có giá trị (cả hai bắt buộc), vi phạm → validation error; quy tắc "bội số 30" giữ nguyên.
+
+**Quy tắc banking có điều kiện theo status (G5, chốt 2B.1a):**
+- Studio ở trạng thái tạo hồ sơ / `PENDING_REVIEW` (và giữ thông tin của `REJECTED`/`SUSPENDED`/`CLOSED` theo dữ liệu đã lưu) **không bắt buộc** có `banking` khi tạo document.
+- Studio **`ACTIVE` bắt buộc có `banking` đủ 4 trường tối thiểu** (sử dụng đúng các field đã có trong sec 2.2, không thêm trường mới): `bankName`, `accountHolder`, `accountNumber`, `qrImageURI` — đủ để nhận cọc chuyển khoản trực tiếp (CORE-01). `qrPayload`, `paymentInstructions`, `enabled` không bắt buộc ở tầng schema.
+- Việc chuyển `status → ACTIVE` phải đi qua validation: banking thiếu/đầy đủ không đạt 4 trường → **từ chối** (enforce bằng pre-validate hook trong `studio.model.js`, chạy khi set lại document ở tầng service).
+- Số tài khoản ngân hàng là dữ liệu nhạy cảm: **không log/in** trong test/audit (test dùng giá trị ẩn danh).
+
 Ví dụ (rút gọn):
 ```json
 { "name": "Lumen Studio", "ownerId": "u_101", "representative": "Trần B",
@@ -112,7 +124,7 @@ Unique compound: `(studioId, userId)`.
 |---|---|---|---|
 | `studioId` | ref studios | B | một studio |
 | `name` | String | B | |
-| `capacity` | Number | | |
+| `capacity` | Number | | **số nguyên dương ≥ 1** (chốt 2B.1a; `0`, âm, thập phân, NaN, Infinity bị từ chối ở tầng Mongoose) |
 | `amenities` | [String] | | |
 | `images` | [String] | | |
 | `status` | Enum: `ACTIVE`, `INACTIVE` | B | |

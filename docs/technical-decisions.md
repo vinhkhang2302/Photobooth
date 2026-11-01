@@ -161,3 +161,17 @@ Chi tiết trong `docs/database-design.md` sec 9b & 10.5; đây là ghi nhận k
 **Giữ nguyên (không đổi):** A1–A9; quy ước key idempotencyKey theo 2A.3; 14 collection; không payment gateway/webhook; không collection `refunds` riêng; slot 15 phút + all-or-nothing.
 
 **Vẫn CHỜ PHÊ DUYỆT (không tự chốt):** **A5b** (số dư tín dụng hoa hồng) tiếp tục chưa duyệt. Điểm mở còn lại từ 2A.4: `maxAttempts` (cấu hình vận hành email), thời hạn khiếu nại sau COMPLETED, maxRetries/backoff cho job — đều là tham số khi code, không chặn việc viết 14 Mongoose Models.
+
+**2B.1a (2026-11-01) — Bổ sung validation cho 6 Core Models (từ audit độc lập)**
+Audit nhóm 1 phát hiện 5 gap (G1–G5) + `Room.capacity`; đã thống nhất và chốt tại `docs/database-design.md` (sec 2.2, 2.4):
+
+| Mã | Quyết định |
+|---|---|
+| G1 | `scheduling.minDurationMinutes <= maxDurationMinutes` (cross-field, giữ rule "bội 30"). |
+| G2 | Design quy **mỗi ngày DUY NHẤT 1 khung giờ** (khung khả dụng = union với ngoại lệ EXTENDED theo M3) → `scheduling.weekdays` không chứa 2 entry cùng `weekday`. Không cho nhiều khung giờ mỗi ngày. |
+| G3 | `weekday` phải **nguyên, ISO 1–7** (M4): 1.5, 0, 8 bị từ chối. |
+| G4 | `openMinutes`/`closeMinutes` **nguyên, trong [0, 1440]** (cho phép close = 1440 tức 24:00), `open < close`; giá trị âm/thập phân/>1440 bị từ chối. |
+| G5 | `banking` **có điều kiện theo status**: PENDING_REVIEW (và REJECTED/SUSPENDED/CLOSED giữ dữ liệu đã lưu) không bắt buộc; **ACTIVE bắt buộc đủ 4 trường** `bankName`, `accountHolder`, `accountNumber`, `qrImageURI` (CORE-01, đúng field sec 2.2, không thêm field mới). Chuyển sang ACTIVE khi banking thiếu → validation từ chối. Số tài khoản là dữ liệu nhạy cảm: không log/in trong test. |
+| CAP | `rooms.capacity` phải là **số nguyên dương ≥ 1** (0, âm, 2.5, NaN, Infinity bị từ chối). |
+
+Giới hạn 2B.1a: chỉ sửa validation trong `server/models/` (studio.model.js, room.model.js) + mở rộng `server/tests/models/check-models.mjs` (không thêm file test mới). Không thay đổi index, collection naming, hay các model khác. Nhóm 2 (8 models còn lại) chưa triển khai.
