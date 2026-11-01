@@ -90,9 +90,9 @@ Ví dụ:
 - **`minDurationMinutes <= maxDurationMinutes`** (G1): khi cả hai có giá trị (cả hai bắt buộc), vi phạm → validation error; quy tắc "bội số 30" giữ nguyên.
 
 **Quy tắc banking có điều kiện theo status (G5, chốt 2B.1a):**
-- Studio ở trạng thái tạo hồ sơ / `PENDING_REVIEW` (và giữ thông tin của `REJECTED`/`SUSPENDED`/`CLOSED` theo dữ liệu đã lưu) **không bắt buộc** có `banking` khi tạo document.
-- Studio **`ACTIVE` bắt buộc có `banking` đủ 4 trường tối thiểu** (sử dụng đúng các field đã có trong sec 2.2, không thêm trường mới): `bankName`, `accountHolder`, `accountNumber`, `qrImageURI` — đủ để nhận cọc chuyển khoản trực tiếp (CORE-01). `qrPayload`, `paymentInstructions`, `enabled` không bắt buộc ở tầng schema.
-- Việc chuyển `status → ACTIVE` phải đi qua validation: banking thiếu/đầy đủ không đạt 4 trường → **từ chối** (enforce bằng pre-validate hook trong `studio.model.js`, chạy khi set lại document ở tầng service).
+- **Điều kiện chuyển trạng thái:** một Studio **chỉ được chuyển sang `ACTIVE` khi có đầy đủ cả 4 trường banking** (đúng các field đã có trong sec 2.2, không thêm trường mới, mỗi trường phải có giá trị khác rỗng sau trim): `bankName`, `accountHolder`, `accountNumber`, `qrImageURI` — đủ để nhận cọc chuyển khoản trực tiếp (CORE-01). Việc chuyển `status → ACTIVE` phải đi qua validation; thiếu bất kỳ 1 trong 4 trường → **từ chối** (enforce bằng pre-validate hook trong `studio.model.js`, chạy khi set lại document ở tầng service).
+- Các trạng thái khác (`PENDING_REVIEW`, `REJECTED`, `SUSPENDED`, `CLOSED`) **không bắt buộc** phải có đủ 4 trường này: studio tạo hồ sơ / `PENDING_REVIEW` có thể chưa có `banking`; `REJECTED`/`SUSPENDED`/`CLOSED` giữ thông tin banking theo dữ liệu đã lưu (nếu có).
+- `qrPayload`, `paymentInstructions`, `enabled` không bắt buộc ở tầng schema.
 - Số tài khoản ngân hàng là dữ liệu nhạy cảm: **không log/in** trong test/audit (test dùng giá trị ẩn danh).
 
 Ví dụ (rút gọn):

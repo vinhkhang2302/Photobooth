@@ -389,6 +389,15 @@ await (async () => {
     "G4: closeMinutes = 1440 (24:00) hợp lệ khi open < 1440",
     new Studio({ ...baseStudio(), scheduling: studioSched({ weekdays: [{ weekday: 1, openMinutes: 540, closeMinutes: 1440 }] }) })
   );
+  await expectValid(
+    "G4: openMinutes = 0 hợp lệ (bỏ ra thấp nhất của [0, 1440])",
+    new Studio({ ...baseStudio(), scheduling: studioSched({ weekdays: [{ weekday: 1, openMinutes: 0, closeMinutes: 540 }] }) })
+  );
+  await expectInvalid(
+    "G4: openMinutes = 2000 (>1440) bị từ chối",
+    new Studio({ ...baseStudio(), scheduling: studioSched({ weekdays: [{ weekday: 1, openMinutes: 2000, closeMinutes: 1440 }] }) }),
+    /openMinutes|0–1440|nguyên/
+  );
 
   // --- G5: banking theo status ---
   await expectValid(
@@ -418,12 +427,25 @@ await (async () => {
     t,
     /ACTIVE|banking/
   );
+  // G5: các trạng thái không phải ACTIVE không bắt buộc đủ 4 trường banking.
+  // (REJECTED/SUSPENDED/CLOSED giữ banking đã lưu, nhưng tạo document mới
+  //  thiếu banking vẫn hợp lệ — chỉ ACTIVE là bị ép.)
+  for (const st of ["REJECTED", "SUSPENDED", "CLOSED"]) {
+    await expectValid(
+      `G5: ${st} không có banking vẫn hợp lệ (không bắt buộc)`,
+      new Studio({ ...baseStudio(), status: st, banking: undefined })
+    );
+  }
 
   // --- Room.capacity (số nguyên dương) ---
   const mkRoom = (cap) => ({ studioId: uid(), name: "Phòng A", status: "ACTIVE", capacity: cap });
   await expectInvalid("capacity = 2.5 bị từ chối", new Room(mkRoom(2.5)), /capacity/);
   await expectInvalid("capacity = 0 bị từ chối", new Room(mkRoom(0)), /capacity|minimum/);
   await expectInvalid("capacity = -1 bị từ chối", new Room(mkRoom(-1)), /capacity|minimum/);
+  // technical-decisions.md (CAP): NaN và Infinity phải bị từ chối
+  // (room.model.js chặn bằng Number.isInteger — cả NaN/±Infinity đều không phải integer).
+  await expectInvalid("capacity = NaN bị từ chối", new Room(mkRoom(NaN)), /capacity/);
+  await expectInvalid("capacity = Infinity bị từ chối", new Room(mkRoom(Infinity)), /capacity/);
   await expectValid("capacity = 2 hợp lệ", new Room(mkRoom(2)));
   await expectValid("capacity = 1 hợp lệ", new Room(mkRoom(1)));
   await expectValid("capacity = undefined (tùy chọn) hợp lệ", new Room(mkRoom(undefined)));
