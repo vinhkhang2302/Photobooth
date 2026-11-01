@@ -1,11 +1,20 @@
+import Header from "./components/Header.jsx";
+import Hero from "./components/Hero.jsx";
+import StudioGrid from "./components/StudioGrid.jsx";
+import HowItWorks from "./components/HowItWorks.jsx";
+import Footer from "./components/Footer.jsx";
+import "./index.css";
+
 export default function App() {
   return (
-    <main style={{ fontFamily: "system-ui, sans-serif", padding: "2rem" }}>
-      <h1>Sàn đặt lịch Photobooth — MVP</h1>
-      <p>
-        Khung frontend React + Vite. Backend: <code>GET /api/health</code> (xem
-        <code> README.md</code> ở thư mục gốc).
-      </p>
-    </main>
+    <>
+      <Header />
+      <main>
+        <Hero />
+        <StudioGrid />
+        <HowItWorks />
+      </main>
+      <Footer />
+    </>
   );
 }
