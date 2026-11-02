@@ -74,14 +74,14 @@ tài liệu này **không thay đổi nghiệp vụ v0.8**, chỉ chốt phần 
 - **Không lưu tiền hoàn dưới dạng số âm.** Hoàn tiền được lưu thành **giao dịch hoàn tiền riêng** (record riêng với `purpose: REFUND`), không âm vào giao dịch gốc.
 - **Điều chỉnh hoa hồng có lịch sử riêng** (bản ghi điều chỉnh `adjustmentOf` trỏ bản ghi gốc) — **không sửa ngược** giao dịch hoặc snapshot đã ghi nhận.
 - **Khoản điều chỉnh vượt công nợ hiện tại** (A5, đã duyệt 2026-10-29): **KHÔNG tự động** chuyển thành số dư tín dụng kỳ sau. Ghi nhận **lịch sử điều chỉnh** (bản ghi `ADJUSTMENT` riêng, có `adjustmentOf`), trường hợp chưa thể đối soát được → đánh dấu `UNRECONCILABLE` và **chuyển admin xử lý thủ công**.
-- ⚠️ **ĐỀ XUẤT KỸ THUẬT, VẪN CHỜ CHỦ DỰ ÁN PHÊ DUYỆT (không phải v0.8, không phải A5 đã duyệt):** tự động theo dõi khoản vượt thành **số dư tín dụng** cho kỳ đối soát tiếp theo (không làm âm công nợ hiện tại; mang sang kỳ sau) — chưa chính thức, **chưa được duyệt** (mục 5, dòng A5b), không được coi là quy tắc hiệu lực.
+- ❌ **ĐÃ BỊ CHỦ DỰ ÁN BÁC BỎ (chốt 2C.1, 2026-11-01):** đề xuất (trước đây ghi nhận ở 2A.3) "tự động theo dõi khoản vượt thành **số dư tín dụng** kỳ đối soát tiếp theo" — **không carryover, không thêm trường `creditCarryover`**. A5a (ghi nhận lịch sử điều chỉnh + `UNRECONCILABLE` + admin xử lý thủ công) là chính sách duy nhất hiệu lực. Đề xuất khép lại, không còn điểm mở.
 
 ### 3.4. Hệ quả cho mô hình dữ liệu (định hướng, bám theo collection v0.8)
 
 - `commissions`: lưu `rateSnapshot`, `basisAmount`, `commissionAmount` (số nguyên VND, không âm), `period`, `dueAt`, `settledAt`, `payoutReference`, `adjustmentOf` (liên kết bản ghi gốc khi điều chỉnh).
 - `payments`: `purpose ∈ {DEPOSIT, BALANCE, REFUND}`, tiền là số nguyên VND không âm cho mỗi record; hoàn tiền là record riêng.
 - `priceSnapshot` / `policySnapshot` trên booking: bất biến sau khi tạo.
-- Khi có điều chỉnh hoa hồng làm tăng nghĩa vụ vượt công nợ kỳ: (A5, đã duyệt) ghi nhận bản ghi điều chỉnh và chuyển `UNRECONCILABLE` cho admin xử lý thủ công. **Trường `creditCarryover` (số dư tín dụng tự động) là đề xuất CHƯA được DUYỆT** (xem 3.3 & mục 5) — không thiết kế theo đó cho đến khi có phê duyệt.
+- Khi có điều chỉnh hoa hồng làm tăng nghĩa vụ vượt công nợ kỳ: (A5, đã duyệt) ghi nhận bản ghi điều chỉnh và chuyển `UNRECONCILABLE` cho admin xử lý thủ công. **Không có trường `creditCarryover`** — đề xuất số dư tín dụng tự động đã bị chủ dự án **bác bỏ (chốt 2C.1)** (xem 3.3 & mục 5); không thiết kế theo đó.
 
 ## 4. Thanh điểm kiểm tra nhất quán
 
@@ -93,7 +93,7 @@ tài liệu này **không thay đổi nghiệp vụ v0.8**, chỉ chốt phần 
 | Số nguyên VND | **ĐÃ DUYỆT (A1, 2026-10-29)** | `Number.isSafeInteger()`, từ chối giá trị không hợp lệ |
 | Hoàn tiền không âm, record riêng | **Mới (kỹ thuật)** | Không mâu thuẫn v0.8 (v0.8 không quy định dấu) |
 | Không tự động số dư tín dụng (A5a) | **ĐÃ DUYỆT 2026-10-29** | Điều chỉnh vượt công nợ → ghi lịch sử + `UNRECONCILABLE` + admin xử lý thủ công |
-| Số dư tín dụng tự động cho điều chỉnh vượt công nợ (A5b) | **Đề xuất kỹ thuật — CHỜ CHỦ DỰ ÁN PHÊ DUYỆT** | Bổ sung thực thi, không thay đổi nghiệp vụ 5%/đối soát tháng; chưa phải quy tắc v0.8 |
+| Số dư tín dụng tự động cho điều chỉnh vượt công nợ (A5b) | **ĐÃ BỊ CHỦ DỰ ÁN BÁC BỎ (chốt 2C.1, 2026-11-01)** | Không carryover, không trường `creditCarryover`; A5a (lịch sử + UNRECONCILABLE + admin) là chính sách duy nhất hiệu lực |
 
 ## 5. Nhật ký duyệt quyết định kỹ thuật
 
@@ -105,7 +105,7 @@ tài liệu này **không thay đổi nghiệp vụ v0.8**, chỉ chốt phần 
 | A2 | Khóa thời gian bằng **lưới slot 15 phút + unique index theo `(roomId, slotStartUtc)`**. Thời lượng đặt bước 30 phút; bước giờ bắt đầu 15/30 phút; **mặc định buffer 15 phút sau buổi đặt; giữ toàn bộ slot bị chiếm, kể cả buffer**. |
 | A3 | Dùng **MongoDB Atlas hoặc replica set** có hỗ trợ multi-document transaction; transaction bảo đảm **đơn nhiều phòng tạo toàn bộ hoặc không tạo gì**. Không dùng standalone cho yêu cầu này. |
 | A4 | Xử lý đơn hết hạn bằng **job định kỳ** + update có điều kiện + giờ server + thao tác idempotent. Chưa cài/triển khai job trong giai đoạn tài liệu này. |
-| A5 | (A5a) **Không** tự động chuyển điều chỉnh hoa hồng vượt công nợ thành số dư tín dụng kỳ sau; ghi nhận lịch sử điều chỉnh và chuyển trường hợp chưa đối soát được sang **admin xử lý thủ công**. (A5b) Số dư tín dụng tự động vẫn **chưa được duyệt**. |
+| A5 | (A5a) **Không** tự động chuyển điều chỉnh hoa hồng vượt công nợ thành số dư tín dụng kỳ sau; ghi nhận lịch sử điều chỉnh và chuyển trường hợp chưa đối soát được sang **admin xử lý thủ công** — **chốt duy nhất hiệu lực (xác nhận 2C.1: A5b bị bác bỏ, không carryover, không trường `creditCarryover`)**. |
 | A6 | Lịch mở cửa hằng tuần nằm trong **cấu hình studio**; ngày nghỉ/ngày đặc biệt/khoảng khóa lịch nằm trong **collection ngoại lệ riêng**, hỗ trợ ngoại lệ **toàn studio hoặc riêng 1 phòng**. |
 | A7 | 5 trạng thái studio: **PENDING_REVIEW, ACTIVE, REJECTED, SUSPENDED, CLOSED**; chỉ **ACTIVE** được công khai và nhận đặt lịch. |
 | A8 | Lưu ngày giờ dạng **UTC `Date`**; dùng múi giờ cấu hình trên studio để hiển thị và tính giờ hoạt động; **mặc định `Asia/Ho_Chi_Minh`**. |
@@ -116,11 +116,11 @@ tài liệu này **không thay đổi nghiệp vụ v0.8**, chỉ chốt phần 
 | Mã | Nội dung đã chốt |
 |---|---|
 | M1 | Bổ sung hồ sơ studio: **giữ nguyên 5 trạng thái theo A7**; thêm `studios.needsMoreInfo: Boolean`. Admin yêu cầu bổ sung → giữ `status = PENDING_REVIEW`, đặt `needsMoreInfo = true`; studio gửi bổ sung → đặt `false`. Lịch sử yêu cầu/phản hồi lưu trong `auditLogs`. |
-| M2 | Sự cố booking: **bổ sung collection `incidents`** (1 booking có thể có nhiều incident). Lưu `bookingId`, người báo cáo, loại sự cố, mô tả, bằng chứng, trạng thái xử lý, thời điểm tạo và giải quyết. **Không tự động chuyển booking sang COMPLETED khi có sự cố chưa giải quyết** (đúng V08-11). Cấu trúc/trạng thái cụ thể chỉ là đề xuất — phải đối chiếu v0.8 trước khi chốt chi tiết. |
+| M2 | Sự cố booking: **bổ sung collection `incidents`** (1 booking có thể có nhiều incident). Lưu `bookingId`, người báo cáo, loại sự cố, mô tả, bằng chứng, trạng thái xử lý, thời điểm tạo và giải quyết. **Không tự động chuyển booking sang COMPLETED khi có sự cố chưa giải quyết** (đúng V08-11). *(Cụm "cấu trúc/trạng thái cụ thể chỉ là đề xuất — phải đối chiếu v0.8 trước khi chốt" **đã được thay thế bởi quyết định D2 tại 2C.1, 2026-11-01**: enum `type` = SERVICE/DAMAGE/PAYMENT/OTHER (immutable) và `status` = OPEN/IN_PROGRESS/RESOLVED/DISPUTED là **quyết định đã chốt** (nghĩa kỹ thuật, không phải danh mục v0.8) — không còn là đề xuất.)* |
 | M3 | `EXTENDED` (ngoại lệ lịch): cho phép **mở rộng khung giờ hoạt động trong ngày được chỉ định**. **CLOSED và BLOCKED ưu tiên cao hơn EXTENDED**. Studio bị đóng (SUSPENDED/CLOSED) không được đặt phòng kể cả khi phòng có EXTENDED. Ngoại lệ cấp ROOM không vượt được trạng thái đóng cấp STUDIO. Quy tắc hợp nhất các khoảng ngoại lệ chồng lấn đã định nghĩa trong thiết kế. |
 | M4 | **Weekday theo ISO 8601**: 1 = Monday, 2 = Tuesday, …, 7 = Sunday. Thống nhất giữa database và backend. |
 | M5 | **`bufferMinutes` chỉ nhận 0, 15 hoặc 30** (bội số 15 — ràng buộc bởi lưới slot A2). Giữ nguyên cơ chế khóa slot 15 phút. |
-| M6 | Email: collection **`notifications`** lưu thông tin gửi thông báo/email, theo dõi **PENDING/SENT/FAILED + số lần thử + lỗi gửi gần nhất**. `auditLogs` ghi nhận sự kiện gửi email thất bại quan trọng. **Chưa triển khai Outbox riêng trong MVP**. **Lỗi email không được làm thay đổi trạng thái booking** (CORE-05/v0.8). |
+| M6 | Email: collection **`notifications`** lưu thông tin gửi thông báo/email, theo dõi **PENDING/SENT/FAILED + số lần thử + lỗi gửi gần nhất**. *(Patch 2C.1: delivery status chỉ áp dụng cho **channel = EMAIL** — `status` bắt buộc khi EMAIL (enum PENDING/SENT/FAILED), **WEB không có delivery status nên `status = null`**, kèm `attemptCount = 0`, `nextAttemptAt = null`; conditional validation khai báo ở tầng Mongoose, không thêm field mới.)* `auditLogs` ghi nhận sự kiện gửi email thất bại quan trọng. **Chưa triển khai Outbox riêng trong MVP**. **Lỗi email không được làm thay đổi trạng thái booking** (CORE-05/v0.8). |
 
 Quy tắc kỹ thuật bổ trợ (gắn với M1–M6, chi tiết tại `docs/database-design.md` sec 5b & 10.4):
 - **(A)** Mỗi giao dịch `DEPOSIT`/`BALANCE`/`REFUND` là 1 record riêng; trạng thái từng giao dịch tách khỏi `paymentStatus`/`refundStatus` tổng hợp trên booking; cập nhật tổng hợp phải nhất quán (cùng transaction) với record chi tiết. Không có payment gateway/webhook (MVP chuyển khoản trực tiếp + studio xác nhận — CORE-02).
@@ -128,7 +128,7 @@ Quy tắc kỹ thuật bổ trợ (gắn với M1–M6, chi tiết tại `docs/d
 - **(C)** Index khai báo trong Mongoose (kèm partial filter cho trường tùy chọn/null); không tự chạy lệnh index trên Atlas ở bước này.
 - **(D)** Phân định trạng thái **chính thức** (collection chi tiết: payments/commissions/incidents/slotLocks) vs. **tổng hợp** (booking); giữ lịch sử mọi giao dịch/hoàn/điều chỉnh — không làm mất dữ liệu khi đổi trạng thái.
 
-**Vẫn CHỜ PHÊ DUYỆT (không triển khai như chính thức):** A5b — số dư tín dụng hoa hồng cho điều chỉnh vượt công nợ (mục 3.3). M1–M6 đã chốt không thay thế A5b; việc tự động mang khoản vượt sang kỳ sau vẫn là đề xuất chưa được duyệt.
+**Điểm mở ban đầu của 2A.1 — đã khép lại (2C.1, 2026-11-01):** A5b (số dư tín dụng hoa hồng cho điều chỉnh vượt công nợ) **đã bị chủ dự án BÁC BỎ** — không carryover, không trường `creditCarryover` (mục 3.3). M1–M6 giữ nguyên hiệu lực.
 
 **2A.3 (2026-10-30) — Xử lý điểm I1–I5 trước khi code (chỉ cập nhật tài liệu)**
 Chi tiết trong `docs/database-design.md`; đây là ghi nhận quyết định/kết luận, không phải thay đổi nghiệp vụ.
@@ -137,16 +137,16 @@ Chi tiết trong `docs/database-design.md`; đây là ghi nhận quyết định
 |---|---|
 | I1 | **Danh sách collection = 14** (users, studios, studioMembers, rooms, services, availabilityExceptions, bookings, slotLocks, payments, commissions, reviews, incidents, notifications, auditLogs). `requirements-summary.md` mục 7 đã đồng bộ (bỏ `availabilityRules`, thêm `slotLocks`/`incidents`). Không thay đổi v0.8. |
 | I2 | **Quy ước idempotencyKey:** commission `commission:{bookingId}:ORIGINAL` / `commission:{bookingId}:ADJUSTMENT:{adjustmentId}`; payment `pay:{bookingId}:DEPOSIT|BALANCE:{paymentAttemptId}` / `pay:{bookingId}:REFUND:{refundId}`. Retry **dùng lại key cũ**, không seq. Mongoose: `required + unique`; **lưu ý MongoDB unique index 1 trường coi null/thiếu như null** → phải luôn có giá trị (validation required chặn trước). |
-| I3 | **Retry email:** thêm `nextAttemptAt` (nullable) + index `{ channel, status, nextAttemptAt }`; backoff 15/30/60/120 phút, trần 24h; `attemptCount` tăng sau mỗi lần thử thật; SENT/FAILED hết lượt → `nextAttemptAt = null`. Lỗi email **không đổi trạng thái booking**. **`maxAttempts` = cấu hình vận hành, CHƯA CHỐT.** |
-| I4 | **Job tự hoàn thành (V08-11):** điều kiện `CONFIRMED AND endAt + 24h ≤ now (server) AND không có incident OPEN/IN_PROGRESS/DISPUTED` (kiểm tra toàn bộ incident; RESOLVED = đã giải quyết). Chuyển COMPLETED + tạo commission ORIGINAL trong 1 transaction (idempotent). **Không thêm điều kiện `paymentStatus`** (v0.8 không yêu cầu). Race incident ↔ job: re-query incident trong transaction + update có điều kiện `{ bookingStatus: CONFIRMED }`. |
-| I5 | **Incident enum (đề xuất kỹ thuật, không phải v0.8):** `type` = SERVICE/DAMAGE/PAYMENT/OTHER (immutable); `status` = OPEN/IN_PROGRESS/RESOLVED/DISPUTED (đổi theo thời gian). **Tách `type`/`status`, không đưa DISPUTED vào `type`.** Nếu danh mục không phù hợp v0.8 → báo cáo, không tự đổi. |
+| I3 | **Retry email:** thêm `nextAttemptAt` (nullable) + index `{ channel, status, nextAttemptAt }`; backoff 15/30/60/120 phút, trần 24h; `attemptCount` tăng sau mỗi lần thử thật; SENT/FAILED hết lượt → `nextAttemptAt = null`. Lỗi email **không đổi trạng thái booking**. **`maxAttempts` = cấu hình vận hành** (không hardcode trong model, không lưu trong document) — **đã chốt = 5 lần gửi (tính cả lần đầu) (2C.1)**; `attemptCount` và `nextAttemptAt` tiếp tục lưu trong document. |
+| I4 | **Job tự hoàn thành (V08-11):** điều kiện `CONFIRMED AND endAt + 24h ≤ now (server) AND không có incident OPEN/IN_PROGRESS/DISPUTED` (kiểm tra toàn bộ incident; RESOLVED = đã giải quyết). Chuyển COMPLETED + tạo commission ORIGINAL trong 1 transaction (idempotent). **Không thêm điều kiện `paymentStatus`** (v0.8 không yêu cầu). *(Lưu ý 2C.1-patch: câu gốc "race incident ↔ job: **re-query incident trong transaction + update có điều kiện** `{ bookingStatus: CONFIRMED }`" là **cách cũ, đã bị LOẠI BỎ tại RC1** (2A.4) vì transaction MongoDB đọc snapshot theo thời điểm bắt đầu → có thể bỏ sót incident commit sau đó. **Cơ chế hiệu lực (RC1):** `bookings.incidentRevision` (tăng cùng transaction khi insert incident) + job auto-complete **update có điều kiện** `{ bookingStatus: CONFIRMED, incidentRevision: v }` + **shared booking write** (2 đường ghi chung 1 document → MongoDB phát hiện write conflict) + **xử lý write conflict: rollback → retry** (mỗi retry: fresh read `bookingStatus`, **kiểm tra lại toàn bộ incident chưa giải quyết** bên ngoài transaction) + **retry có trần (2C.1: 5 lần bổ sung sau lần đầu = tối đa 6 lần thực thi/chuỗi, cấu hình tầng job, không thêm trường retry vào schema `bookings`)**. Chi tiết đầy đủ tại `docs/database-design.md` sec 9 (I4/RC1).)* |
+| I5 | **Incident enum (đề xuất kỹ thuật, không phải v0.8; đã được chủ dự án CHỐT tại 2C.1):** `type` = SERVICE/DAMAGE/PAYMENT/OTHER (immutable); `status` = OPEN/IN_PROGRESS/RESOLVED/DISPUTED (đổi theo thời gian). **Tách hoàn toàn `type`/`status`, không đưa DISPUTED vào `type`.** Danh mục enum là quyết định cuối (nghĩa kỹ thuật, không phải v0.8) — không thay đổi sau khi tạo. |
 
-**Điểm CHỜ QUYẾT ĐỊNH (không tự chốt, cần chủ dự án):**
-- `maxAttempts` (giới hạn số lần thử email) — cấu hình vận hành (I3).
-- Có nên **chặn create incident khi booking đã COMPLETED** (chuyển sang luồng khiếu nại thay vì "quay trạng thái") — I4, điểm mấu chốt phụ; không nằm trong v0.8.
-- Danh mục `incidents.type` (SERVICE/DAMAGE/PAYMENT/OTHER) — xác nhận trước khi code (I5).
+**Điểm mở của 2A.3 — đã được chủ dự án QUYẾT ĐỊNH tại 2C.1 (2026-11-01):**
+- `maxAttempts` (giới hạn số lần thử email) → **chốt = 5 (tính cả lần gửi đầu), cấu hình ứng dụng, không lưu trong document** (I3).
+- **Incident khi booking đã COMPLETED** → **CHẤC BỎ "chặn create"**; thay vào đó tiếp nhận khiếu nại trong **thời hạn 7 × 24 giờ kể từ `completedAt`** (UTC, enforce tầng service) và giữ `createdAfterCompletion` (I4/RC2).
+- Danh mục `incidents.type` (SERVICE/DAMAGE/PAYMENT/OTHER) → **chốt như danh mục cuối cùng** (I5).
 
-**Giữ nguyên:** A1–A9, A5b (vẫn CHỜ DUYỆT), 14 collection, không gateway/webhook, không collection `refunds` riêng, cơ chế slot 15 phút + all-or-nothing transaction.
+**Giữ nguyên:** A1–A9, A5b (đã BÁC BỎ tại 2C.1), 14 collection, không gateway/webhook, không collection `refunds` riêng, cơ chế slot 15 phút + all-or-nothing transaction.
 
 **2A.4 (2026-10-31) — Chốt chi tiết kỹ thuật cuối trước khi code**
 Chi tiết trong `docs/database-design.md` sec 9b & 10.5; đây là ghi nhận kết luận kỹ thuật, không thay đổi nghiệp vụ v0.8.
@@ -154,13 +154,13 @@ Chi tiết trong `docs/database-design.md` sec 9b & 10.5; đây là ghi nhận k
 | Mã | Kết luận |
 |---|---|
 | RC1 | **Race incident ↔ auto-complete:** loại cơ chế "chỉ re-query trong transaction" (transaction đọc snapshot theo thời điểm bắt đầu → có thể bỏ sót incident commit sau đó). Thay bằng: **`bookings.incidentRevision`** (Number, tăng khi insert incident trong cùng transaction) + job auto-complete **update booking có điều kiện `{ bookingStatus: CONFIRMED, incidentRevision: v }`**; khi **write conflict** → rollback + **retry an toàn**: đọc lại `bookingStatus` + **kiểm tra lại toàn bộ incident chưa giải quyết (OPEN/IN_PROGRESS/DISPUTED)** trước khi hoàn thành. Không bao để COMPLETED khi incident hợp lệ đã commit. |
-| RC2 | **Incident sau COMPLETED:** cho phép ghi nhận khiếu nại; **KHÔNG chuyển ngược** `bookingStatus` (COMPLETED → CONFIRMED); xử lý qua luồng khiếu nại/refund/commission adjustment có sẵn. **Thời hạn khiếu nại sau COMPLETED CHƯA CHỐT** (v0.8 không quy định) — cần thống nhất trước khi code rule này. |
+| RC2 | **Incident sau COMPLETED:** cho phép ghi nhận khiếu nại; **KHÔNG chuyển ngược** `bookingStatus` (COMPLETED → CONFIRMED); xử lý qua luồng khiếu nại/refund/commission adjustment có sẵn. **Thời hạn khiếu nại đã CHỐT tại 2C.1: 7 × 24 giờ kể từ `completedAt` (mốc UTC), enforce ở tầng service (không phải Mongoose validator), giữ `createdAfterCompletion` để phân biệt incident phát sinh sau khi hoàn tất; không thay đổi quy tắc `incidentRevision` (RC1).** |
 | CN1 | **Collection naming (Mongoose):** tên collection **khớp chính xác 14 tên**, đặc biệt camelCase `studioMembers`, `availabilityExceptions`, `slotLocks`, `auditLogs`; mỗi schema khai báo collection name **tường minh** (option 3 của `mongoose.model`), **không dựa pluralize/lowercase mặc định**. Kiểm tra lại tên collection thực tế trên Atlas trước khi chạy thật. |
 | IK1 | **`idempotencyKey`:** `required` = validation Mongoose; `unique` = **MongoDB unique index** (không phải validator Mongoose, chỉ chặn trùng khi key có giá trị); `immutable` = không sửa sau tạo. **Không được kết luận "đã chống trùng" chỉ dựa Schema** — phải **kiểm tra unique index thực sự tồn tại** trên Atlas trước khi đưa vào hoạt động thực tế. |
 
 **Giữ nguyên (không đổi):** A1–A9; quy ước key idempotencyKey theo 2A.3; 14 collection; không payment gateway/webhook; không collection `refunds` riêng; slot 15 phút + all-or-nothing.
 
-**Vẫn CHỜ PHÊ DUYỆT (không tự chốt):** **A5b** (số dư tín dụng hoa hồng) tiếp tục chưa duyệt. Điểm mở còn lại từ 2A.4: `maxAttempts` (cấu hình vận hành email), thời hạn khiếu nại sau COMPLETED, maxRetries/backoff cho job — đều là tham số khi code, không chặn việc viết 14 Mongoose Models.
+**Điểm mở của 2A.4 — đã được chủ dự án QUYẾT ĐỊNH tại 2C.1 (2026-11-01):** (i) **A5b** (số dư tín dụng hoa hồng) → **BÁC BỎ**, giữ A5a; (ii) `maxAttempts` → **= 5, cấu hình ứng dụng** (không lưu trong document); (iii) thời hạn khiếu nại sau COMPLETED → **7 × 24 giờ kể từ `completedAt`** (UTC, enforce tầng service); (iv) maxRetries/backoff cho job auto-complete → **5 lần retry BỔ SUNG sau lần thực thi đầu tiên (= tối đa 6 lần thực thi trong một chuỗi), backoff tăng dần, cấu hình ở tầng job** (không thêm trường retry vào schema; hết retry → bỏ qua booking trong chu kỳ hiện tại). **Không còn điểm mở chưa chốt cho Nhóm 2 (8 models)** — sẵn sàng làm cơ sở triển khai.
 
 **2B.1a (2026-11-01) — Bổ sung validation cho 6 Core Models (từ audit độc lập)**
 Audit nhóm 1 phát hiện 5 gap (G1–G5) + `Room.capacity`; đã thống nhất và chốt tại `docs/database-design.md` (sec 2.2, 2.4):
@@ -175,3 +175,20 @@ Audit nhóm 1 phát hiện 5 gap (G1–G5) + `Room.capacity`; đã thống nhấ
 | CAP | `rooms.capacity` phải là **số nguyên dương ≥ 1** (0, âm, 2.5, NaN, Infinity bị từ chối). |
 
 Giới hạn 2B.1a: chỉ sửa validation trong `server/models/` (studio.model.js, room.model.js) + mở rộng `server/tests/models/check-models.mjs` (không thêm file test mới). Không thay đổi index, collection naming, hay các model khác. Nhóm 2 (8 models còn lại) chưa triển khai.
+
+**2C.1 (2026-11-01) — Chủ dự án CHỐT các quyết định còn mở cho Nhóm 2 (8 models)**
+Chốt tại `docs/database-design.md` (sec 2.8, 2.11, 2.12, 2.13, 2.14, 3, 5, 9, 10.3/10.6). Đây là quyết định cuối, dùng làm cơ sở triển khai Nhóm 2; không còn điểm mở.
+
+| Mã | Quyết định |
+|---|---|
+| D1 | **A5b (credit carryover hoa hồng):** CHỦ DỰ ÁN **BÁC BỎ** — không carryover, **không thêm trường `creditCarryover`** vào `commissions`. A5a (ghi lịch sử + `UNRECONCILABLE` + admin xử lý thủ công) là chính sách duy nhất hiệu lực. |
+| D2 | **`incidents.type`:** enum chốt `SERVICE`, `DAMAGE`, `PAYMENT`, `OTHER` (immutable). **`incidents.status`:** `OPEN`, `IN_PROGRESS`, `RESOLVED`, `DISPUTED` (đổi theo thời gian). Tách hoàn toàn `type` (tại sao) khỏi `status` (xử lý thế nào). |
+| D3 | **`notifications.maxAttempts`:** tối đa **5 lần thử gửi (tính cả lần đầu)**. Là **cấu hình ứng dụng (job email)**, **không hardcode trong model, không lưu thành field trong document `notifications`**. `attemptCount` + `nextAttemptAt` tiếp tục lưu trong document. |
+| D4 | **Notification retry:** backoff **15/30/60/120 phút** — trong đó **120 phút là delay DÀI NHẤT của lịch hiện tại** (4 mức chờ: 15/30/60/120). **24 giờ chỉ là giới hạn trần bảo vệ (protective cap) cho công thức `min(backoffTier, 24h)`**, **KHÔNG phải mức delay thứ 5** (với 5 lần gửi hiện tại, delay thực tế luôn ≤ 120 phút; cap phòng cho cấu hình backoff mở rộng về sau). Tối đa 5 lần gửi (tính cả lần đầu); **lỗi email không thay đổi `bookingStatus`**; **không triển khai Outbox trong MVP**. **Không thêm `maxAttempts` vào document `notifications`.** (patch 2C.1) |
+| D5 | **Thời hạn khiếu nại (complaint period) sau COMPLETED:** tiếp nhận incident mới trong **7 × 24 giờ kể từ `completedAt`** (mốc **UTC**). **Enforce ở tầng service** (không dùng Mongoose schema validator để quyết định thời gian). Giữ `createdAfterCompletion` để phân biệt incident phát sinh sau hoàn tất. **Không thay đổi quy tắc `incidentRevision` (RC1)** và **không chuyển booking từ COMPLETED ngược về CONFIRMED**. |
+| D6 | **Job auto-complete:** khi gặp lỗi transient/write conflict → **5 lần retry BỔ SUNG sau lần thực thi đầu tiên (= tối đa 6 lần thực thi trong một chuỗi thử lại)**; **backoff tăng dần, cấu hình ở tầng job**; **hết retry → bỏ qua booking trong chu kỳ hiện tại, chờ chu kỳ job tiếp theo** (không block các booking khác); **không thêm trường retry vào schema `bookings`**. Điều kiện tự hoàn tất (I4: `CONFIRMED` + 24h + không incident OPEN/IN_PROGRESS/DISPUTED) **không thay đổi**. (patch 2C.1) |
+| D7 | **SlotLock:** 1 document = 1 slot đang giữ. Unique index đầy đủ `{roomId:1, slotStartUtc:1}`. Giải phóng = **xóa document trong cùng transaction**. **Không lưu document RELEASED** trong collection hoạt động. **Không dùng field `state`** trong schema. `source` = `BOOKING`/`MANUAL`; `source=BOOKING` ⇒ `bookingId` bắt buộc; `source=MANUAL` ⇒ `bookingId=null`. `slotStartUtc` **căn đúng lưới 15 phút UTC**. |
+| D8 | **Review:** **giữ `timestamps`**. Nội dung review (rating/comment) **không sửa sau khi gửi**. Admin vẫn được đổi `VISIBLE`/`HIDDEN` theo quyền; việc ẩn **không thay đổi nội dung gốc**. |
+| D9 | **AuditLog:** **append-only**, **không có `updatedAt`**; dùng `timestamps` với **`createdAt` khai báo rõ trong schema (mặc định là **hàm `Date.now`** — `default: Date.now`, không phải `new Date()`); **không cập nhật/xóa log đã ghi**. **(patch 2C.1) `actorId`:** thao tác do USER → bắt buộc (ref `users`); thao tác do SYSTEM/job → được phép `null`; **không thêm `actorType` hay field mới, không tạo "SYSTEM user" giả**. `metadata`: **không chứa password, passwordHash, token, secret, hay số TK ngân hàng đầy đủ** (chỉ giá trị đã redacted/masked khi log thay đổi banking). |
+
+**Nguyên tắc phân tầng (D1–D9):** quy tắc **schema** (Mongoose field/enum/validator) — chỉ khai báo cấu trúc; quy tắc **service** (thời hạn khiếu nại D5, bất biến nội dung review D8, chặn sửa sau gửi) — enforce ở logic ứng dụng, không hardcode trong schema; quy tắc **job** (maxAttempts D3, backoff D4, retry auto-complete D6) — tham số vận hành cấu hình, không phải field. Chỉ tạo field mới đúng như đã liệt kê trong D1–D9; **không tạo field ngoài các quyết định này**.
