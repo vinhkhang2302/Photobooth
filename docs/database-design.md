@@ -183,43 +183,59 @@ Ví dụ:
 ### 2.7 `bookings` (trọng tâm)
 | Trường | Kiểu | Bắt buộc | Ghi chú |
 |---|---|---|---|
-| `bookingCode` | String | B | unique, hiển thị khách/studio |
+| `bookingCode` | String | B | unique, hiển thị khách/studio. **[CHỐT (D14)]** giữ **unique index**; đặc tả **không yêu cầu** mã tuần tự; **không thêm collection counters; không vượt 14 collections (I1)**. **[SUY LUẬN / MỞ]** *thuật toán sinh mã* (mã ngẫu nhiên khả năng va chạm thấp, ví dụ `PB-26-A7K9M2`, trùng → service tạo mã khác + retry có giới hạn) — **chưa được phê duyệt, chưa chốt thuật toán** |
 | `customerId` | ref users | B | |
 | `studioId` | ref studios | B | **một đơn chỉ một studio** (CORE-04) |
-| `items[]` | mảng (yêu cầu 6) | B | mỗi item: { `roomId` ref, `serviceId` ref?, `addOns[]`, `quantity`/`durationMinutes`, `unitPrice`, `lineAmount` (VND) } |
+| `items[]` | mảng (yêu cầu 6) | B | mỗi item: { `roomId` ref, `serviceId` ref?, `addOns[]` (D10: **[CHỐT]** add-on gắn từng dòng phòng, **[CHỐT]** phải lưu snapshot tại tạo Booking — không đọc tên/giá hiện tại từ Service; **[MỞ]** cấu trúc sub-schema cụ thể. **[SUY LUẬN — chưa duyệt]** ví dụ `{ serviceId ref, nameSnapshot, quantity, unitPriceSnapshot, lineAmountSnapshot }`), `quantity` (D11: **[CHỐT]** phải snapshot; **[CHỐT]** khác `durationMinutes`; **[MỞ]** ý nghĩa chính xác (không suy luận là số lượng dịch vụ); **[MỞ]** PACKAGE có mặc định quantity = 1 hay không), `durationMinutes` (D11: **[CHỐT]** phải snapshot; **[SUY LUẬN — chưa duyệt]** nguyên dương, = `endAt − startAt`, mọi item cùng khung giờ), `unitPrice`, `lineAmount` (VND) } |
 | `startAt`, `endAt` | Date (UTC) | B | **toàn bộ item cùng startAt/endAt**; `endAt` = backend tính |
 | `priceSnapshot` | Sub-doc (yêu cầu 4) | B | { `items[{name, qty, unitPrice, lineAmount}]`, `totalAmount` (VND), `appliedAt` } |
-| `policySnapshot` | Sub-doc | B | { `cancelPolicy`, `depositRate: 0.20`, `appliedAt` } |
+| `policySnapshot` | Sub-doc | B | { `cancelPolicy` (D12: **[MỞ]** Object hay chuỗi — **chưa chốt, chưa có schema chính thức**; ví dụ object (SUY LUẬN, chưa duyệt) đủ 4 trường hợp CORE-03), `depositRate: 0.20`, `appliedAt` }. **[MỞ] (D13, O3b):** nguồn chính sách hủy (nền tảng cố định hay Studio cấu hình) — chưa chốt |
 | `commissionSnapshot` | Sub-doc | B | { `ratePercent: 5`, `formulaNote`, `appliedAt` } (yêu cầu 4) |
-| `depositRate` | Number (0.20) | B | snapshot |
-| `depositAmount` | Number (VND) | B | `Math.round(total × 0.20)` |
-| `remainingAmount` | Number (VND) | B | `total − deposit` |
+| `depositRate` | Number (0.20) | B | **[CHỐT (D24, FINAL SOURCE ALIGNMENT)]** trường **top-level**, tồn tại song song với `policySnapshot.depositRate`. Tỷ lệ cố định 0.20 (CORE-01). **D18 (xóa top-level) đã bị D24 thay thế.** **[MỞ]** quy tắc pre-validate hai giá trị bằng nhau (S7-pre) — chưa phê duyệt |
+| `depositAmount` | Number (VND) | B | `Math.round(total × depositRate)` (A1 — VND nguyên) |
+| `remainingAmount` | Number (VND) | B | `total − deposit` — **giá trị cố định tại thời điểm tạo Booking (D15)**; **không cập nhật theo các giao dịch phát sinh sau đó**; tiền thực tế đã thanh toán lấy từ các Payment records hợp lệ (rule D, sec 5b); refund là payment record riêng, không âm |
 | `responseExpiresAt` | Date | B | `min(createdAt + 12h, startAt − 60m)` (V08-03) |
 | `paymentExpiresAt` | Date | | = thời điểm studio chấp nhận + 30 phút (CORE-01) |
-| `bookingStatus` | Enum: `PENDING_STUDIO`, `AWAITING_PAYMENT`, `CONFIRMED`, `COMPLETED`, `CANCELLED`, `REJECTED`, `EXPIRED` | B | **riêng** (yêu cầu 5) |
-| `paymentStatus` | Enum: `DEPOSIT_PENDING`, `DEPOSIT_PAID`, `BALANCE_PARTIAL`, `PAID_IN_FULL` | B | trạng thái thu (riêng, tính từ payments) |
-| `refundStatus` | Enum: `NONE`, `REFUND_PENDING`, `REFUND_PROCESSING`, `REFUNDED`, `REFUND_FAILED`, `PARTIALLY_REFUNDED`, `DISPUTED` | B | trạng thái hoàn (riêng) |
+| `bookingStatus` | Enum: `PENDING_STUDIO`, `AWAITING_PAYMENT`, `CONFIRMED`, `COMPLETED`, `CANCELLED`, `REJECTED`, `EXPIRED` | B | **riêng** (yêu cầu 5). **[MỞ (D17)]** giá trị khởi tạo `PENDING_STUDIO` trong ví dụ JSON là **minh họa, không phải default đã được đặc tả**; quyết định "Service phải truyền rõ trạng thái khởi tạo" **chưa phê duyệt**; model chỉ validate enum |
+| `paymentStatus` | Enum: `DEPOSIT_PENDING`, `DEPOSIT_PAID`, `BALANCE_PARTIAL`, `PAID_IN_FULL` | B | trạng thái thu (riêng, tính từ payments). **[MỞ (D17)]** giá trị khởi tạo `DEPOSIT_PENDING` là minh họa, chưa chốt |
+| `refundStatus` | Enum: `NONE`, `REFUND_PENDING`, `REFUND_PROCESSING`, `REFUNDED`, `REFUND_FAILED`, `PARTIALLY_REFUNDED`, `DISPUTED` | B | trạng thái hoàn (riêng). **[MỞ (D17)]** giá trị khởi tạo `NONE` là minh họa, chưa chốt |
 | `incidentRevision` | Number (0) (I4, 2A.4) | B | **trường kỹ thuật cho race control**: tăng 1 mỗi khi insert incident hợp lệ cho booking (cùng transaction với insert incident, sec 9). Job tự hoàn thành đọc giá trị này khi check incident; nếu thay đổi giữa đọc và commit → write conflict → retry (sec 9) |
 | `completedAt` | Date | | |
 | `createdBy`, `createdAt` | ref users, Date | B | |
+| `updatedAt` | Date | | **D16 (2C.2): model Booking dùng `timestamps: true`** (Mongoose tự quản lý `createdAt`/`updatedAt`), nhất quán với các Model Group 1. **Ngoại lệ duy nhất là `auditLogs` (D9/S3): append-only, không có `updatedAt`.** |
 
 > Trạng thái thanh toán/hoàn tiền chi tiết hơn (mức record: DEPOSIT_PAID, REFUND_*, ...) nằm ở `payments`; booking chỉ giữ **trạng thái tổng hợp** để dễ hiển thị, luôn có thể đối chiếu về `payments`. Đây là cách "tách nhưng truy vết được".
 
-Ví dụ:
+Ví dụ (đã cập nhật 2C.2 — D10–D24):
 ```json
-{ "bookingCode": "PB-2026-1029-001", "customerId": "u_200", "studioId": "s_01",
+{ "bookingCode": "PB-26-A7K9M2", "customerId": "u_200", "studioId": "s_01",
   "items": [
     { "roomId": "r_01", "serviceId": null, "durationMinutes": 60, "unitPrice": 200000, "lineAmount": 200000 },
-    { "roomId": "r_02", "serviceId": "sv_05", "durationMinutes": 60, "unitPrice": 600000, "lineAmount": 600000 }
+    { "roomId": "r_02", "serviceId": "sv_05", "durationMinutes": 60,
+      "addOns": [
+        { "serviceId": "sv_12", "nameSnapshot": "Album in 20 ảnh A4",
+          "quantity": 1, "unitPriceSnapshot": 150000, "lineAmountSnapshot": 150000 }
+      ],
+      "unitPrice": 600000, "lineAmount": 600000 }
   ],
   "startAt": "2026-11-08T09:00:00Z", "endAt": "2026-11-08T10:00:00Z",
-  "priceSnapshot": { "totalAmount": 800000, "appliedAt": "2026-10-29T09:00:00Z" },
-  "policySnapshot": { "depositRate": 0.2, "cancelPolicy": "24h:100%, <24h:0", "appliedAt": "..." },
+  "priceSnapshot": { "totalAmount": 950000, "appliedAt": "2026-10-29T09:00:00Z" },
+  "policySnapshot": {
+    "depositRate": 0.2,
+    "cancelPolicy": {
+      "customerCancellation": { "before24Hours": { "refundPercent": 100 }, "within24Hours": { "refundPercent": 0 } },
+      "studioCancellationAfterDeposit": { "refundPercent": 100, "refundDeadlineBusinessDays": 3 },
+      "unpaidBooking": { "refundPercent": 0 }
+    },
+    "appliedAt": "..."
+  },
   "commissionSnapshot": { "ratePercent": 5, "appliedAt": "..." },
-  "depositAmount": 160000, "remainingAmount": 640000,
+  "depositRate": 0.2,
+  "depositAmount": 190000, "remainingAmount": 760000,
   "responseExpiresAt": "2026-10-30T09:00:00Z", "bookingStatus": "PENDING_STUDIO",
   "paymentStatus": "DEPOSIT_PENDING", "refundStatus": "NONE" }
 ```
+> Ghi chú ví dụ: add-on là **snapshot đầy đủ (D10)** — giá/tên đóng băng tại tạo đơn; ví dụ trên chỉ minh họa `addOns` trên item có `serviceId`, item room-only (`serviceId: null`) không cần add-on; tổng đơn = Σ `lineAmount` (phòng + dịch vụ + add-on). **`depositRate` tồn tại ở CẢ HAI vị trí — top-level và `policySnapshot` (D24); D18 (chỉ lưu trong policySnapshot) đã bị thay thế.** `remainingAmount` cố định khi tạo đơn (D15). Ba trạng thái `PENDING_STUDIO` / `DEPOSIT_PENDING` / `NONE` trong ví dụ là **giá trị minh họa — không phải default đã được đặc tả (D17, [MỞ])**.
 
 ### 2.8 `slotLocks` — lưới slot 15 phút + unique index (A2, ĐÃ DUYỆT)
 Đây là **trái tim của cơ chế chống trùng** (yêu cầu 7–9). Phương án đã duyệt: chia trục thời gian thành **các ô slot 15 phút cố định** (mốc `slotStartUtc` trùng biên 15 phút của UTC). Mỗi booking **giữ toàn bộ các ô từ giờ bắt đầu đến giờ kết thúc + buffer** (A2: "phải giữ toàn bộ slot bị chiếm, kể cả buffer").
@@ -309,6 +325,8 @@ Ví dụ (hoàn cọc):
 - Khi triển khai Models: định nghĩa unique index **nhất quán** (1 chỗ, trong schema) và **không tự chạy lệnh tạo/xóa index trên Atlas** (rule C) — Mongoose sync sẽ khai báo.
 
 > **A5 (đã duyệt, 2026-10-29): KHÔNG có trường số dư tín dụng (credit carryover).** Khi điều chỉnh hoa hồng vượt công nợ hiện tại: ghi nhận lịch sử điều chỉnh (record `ADJUSTMENT` + `adjustmentOf`), đặt `status: UNRECONCILABLE` và chuyển admin xử lý thủ công. **Tự động mang khoản vượt sang kỳ đối soát tiếp theo: CHỦ DỰ ÁN BÁC BỎ (chốt 2C.1, 2026-11-01)** — không carryover, **không thêm trường `creditCarryover`** vào `commissions`; A5a là chính sách duy nhất hiệu lực.
+
+> **Ghi chú D22 (2C.2 — [TÀI LIỆU / CORE-02]):** trường hợp **tiền chuyển khoản đến muộn sau khi booking đã EXPIRED** (studio xác minh thực tế đã nhận tiền) được ghi nhận qua collection `payments` hiện có (sec 9, quy tắc chuyển trạng thái D19–D23): booking giữ `EXPIRED`, không khôi phục, không tái chiếm slot; **ghi nhận giao dịch đến muộn → đối soát/hoàn thủ công**; **admin xử lý quá hạn/thất bại/tranh chấp theo CORE-03**. **[CHỐT] Không thêm Payment purpose/state mới.** **[MỞ]** tỷ lệ hoàn 100% và thời hạn 3 ngày làm việc **riêng cho trường hợp tiền đến muộn** — chưa được phê duyệt, không tự chốt.
 
 > `commissions` là **bảng đối soát** (separate state, yêu cầu 5) — hoàn toàn tách khỏi `bookings` (booking giữ `commissionSnapshot` cho giá, không giữ trạng thái đối soát).
 
@@ -468,8 +486,10 @@ Quy tắc (M6, CORE-05/v0.8):
 
 ## 4. Snapshot tại thời điểm đặt (yêu cầu 4)
 
-- `bookings.priceSnapshot`, `bookings.policySnapshot`, `bookings.commissionSnapshot` được **ghi một lần lúc insert** (giá trị hiện hành của `services`, `depositRate`, `cancelPolicy`, `commissionSettings.ratePercent`).
+- `bookings.priceSnapshot`, `bookings.policySnapshot`, `bookings.commissionSnapshot` được **ghi một lần lúc insert** (giá trị hiện hành của `services`, tỷ lệ cọc `0.20`, chính sách hủy tại thời điểm đặt, `commissionSettings.ratePercent`). **`addOns[]` trong `items` cũng là snapshot tại tạo đơn (D10)** — không đọc lại tên/giá hiện tại từ model Service. **[MỞ (D13, O3b)]** nguồn quản lý chính sách hủy (nền tảng cố định hay Studio cấu hình) — chưa chốt.
 - **Bất biến sau khi tạo** — studio sửa bảng giá/gói/chính sách sau đó **không đổi** đơn cũ (19.3/19.7). Mongoose: đặt `immutable` trên các snapshot, không có `updatedAt` trên snapshot.
+- **`depositRate` tồn tại ở CẢ HAI vị trí (D24, FINAL SOURCE ALIGNMENT):** trường top-level `bookings.depositRate` **và** `bookings.policySnapshot.depositRate`. **D18 (chỉ lưu trong `policySnapshot`) đã bị thay thế.** **[MỞ]** quy tắc pre-validate hai giá trị bằng nhau (S7-pre) — chưa phê duyệt.
+- **`remainingAmount` là giá trị cố định tại thời điểm tạo Booking (D15):** không cập nhật theo giao dịch phát sinh sau đó; nguồn xác định tiền thực tế đã thanh toán = **Payment records hợp lệ** (rule D, sec 5b); refund là record riêng, không âm.
 - `commissions.rateSnapshot` copy từ `commissionSnapshot` để đối soát giữ lịch sử chính xác (19.4).
 - Khi tạo **đơn mới** (khách hủy rồi đặt lại) → snapshot mới, giá hiện hành; cọc cũ **không** chuyển sang (V07-06).
 
@@ -555,11 +575,21 @@ Quy tắc giờ áp dụng (V08-02/08/09):
 4. **Tạo giao dịch (payments):** insert có `idempotencyKey` unique → chống ghi trùng; nên kèm trong transaction khi cập nhật `bookings.paymentStatus`.
 5. **Tự hoàn thành booking + tạo commission ORIGINAL (I4):** chuyển `CONFIRMED → COMPLETED` + insert `commissions` (kind ORIGINAL, `idempotencyKey = commission:{bookingId}:ORIGINAL`) trong **1 transaction** (idempotent, 19.7).
 
+**Quy tắc chuyển trạng thái booking (2C.2 — D19–D23; giữ nhãn [CHỐT]/[MỞ]/[SUY LUẬN] theo FINAL SOURCE ALIGNMENT):**
+- **Hủy khi `PENDING_STUDIO` (D19) — [MỞ]:** khách **có được tự hủy hay không chưa quyết định** (không tự chốt). **[TÀI LIỆU / D7]** nếu chuyển `CANCELLED`: **xóa toàn bộ SlotLock của đơn trong cùng transaction**; booking **giữ lại** (lịch sử); không tạo Refund khi chưa có khoản tiền thực tế cần hoàn.
+- **Hủy khi `AWAITING_PAYMENT` (D20) — [MỞ]:** khách **có được tự hủy hay không chưa quyết định** (không tự chốt; lưu ý MVP chuyển khoản QR trực tiếp đến studio — có thể đã có giao dịch chuyển tiền nhưng chưa được xác minh, CORE-01/02). **[TÀI LIỆU / CORE-01]** hết 30 phút chờ thanh toán mà không có xác nhận thanh toán hợp lệ → `EXPIRED` + **xóa SlotLock trong cùng transaction**. **[MỞ]** xử lý Payment record DEPOSIT PENDING/CONFIRMED khi khách hủy.
+- **Hủy sau khi `CONFIRMED` (D21) — [TÀI LIỆU / CORE-03, giữ nguyên đủ]:** khách hủy trước ≥ 24 giờ → hoàn 100% cọc; khách hủy trong vòng 24 giờ → không hoàn; studio hủy sau khi nhận cọc → hoàn 100% trong 3 ngày làm việc; **nền tảng theo dõi, admin xử lý quá hạn/thất bại/tranh chấp**. Booking/Payment/Refund giữ lịch sử độc lập (record riêng); **không xóa Booking khi hủy**. **[MỞ]** chi tiết thao tác Payment/Refund cụ thể khi khách hủy.
+- **Tiền đến sau khi EXPIRED (D22) — [TÀI LIỆU / CORE-02]:** nếu booking đã `EXPIRED` nhưng studio xác minh thực tế đã nhận tiền từ khách: **không khôi phục booking thành `CONFIRMED`**; **không tự động chiếm lại SlotLock**; giữ nguyên `EXPIRED`; **ghi nhận giao dịch đến muộn** theo quy tắc Payment (sec 2.9); **đối soát/hoàn thủ công**; **admin xử lý quá hạn/thất bại/tranh chấp theo CORE-03**. **[CHỐT]** không thêm Payment purpose/state mới. **[MỞ / SUY LUẬN]** **tỷ lệ hoàn 100% và thời hạn 3 ngày làm việc riêng cho trường hợp tiền đến muộn — chưa được phê duyệt, không tự chốt** (mốc 3 ngày làm việc hiện chỉ có trong nguồn cho trường hợp studio hủy sau khi đã thu cọc).
+- **Điều kiện hoàn thành Booking khi có Incident (D23):**
+  - **[CHỐT — luồng Job tự động (T11)]** job tự động hoàn thành giữ điều kiện: **không tồn tại Incident chưa giải quyết** (`OPEN`/`IN_PROGRESS`/`DISPUTED`) mới đủ điều kiện `COMPLETED`; chỉ khi tất cả incident liên quan đã `RESOLVED` thì hoàn thành.
+  - **[MỞ — luồng Studio xác nhận thủ công]** studio có được xác nhận hoàn thành thủ công khi còn Incident chưa giải quyết hay không — **chưa có căn cứ, không tự suy diễn**.
+  - **[CHỐT — giữ RC1/RC2]** incident vẫn được tạo trong **7 × 24 giờ kể từ `completedAt`**; booking đã `COMPLETED` **không quay lại `CONFIRMED`**; việc tạo incident (cả trước lẫn sau hoàn thành) **phải cập nhật `incidentRevision` trong cùng transaction** (RC1).
+
 **Job định kỳ (A4, ĐÃ DUYỆT):**
 - Job định kỳ (cron) quét:
   - `bookings.bookingStatus = PENDING_STUDIO AND responseExpiresAt <= now` → EXPIRED (REJECTED path, 19.2).
-  - `bookings.bookingStatus = AWAITING_PAYMENT AND paymentExpiresAt <= now` → EXPIRED + xóa slotLocks.
-  - **Tự hoàn thành (I4, V08-11):** `bookings.bookingStatus = CONFIRMED AND endAt + 24h <= now` (server time, A8) **VÀ không tồn tại incident `OPEN`/`IN_PROGRESS`/`DISPUTED` của booking đó** (kiểm tra **toàn bộ** incidents, index `{ bookingId, status }`) → chuyển `COMPLETED` + tạo commission ORIGINAL (transaction, idempotent). Có incident chưa giải quyết → **KHÔNG hoàn thành**, giữ `CONFIRMED`, log.
+  - `bookings.bookingStatus = AWAITING_PAYMENT AND paymentExpiresAt <= now` → EXPIRED + xóa slotLocks (D20: khách tự hủy ở trạng thái này là **[MỞ]**; đường EXPIRED theo CORE-01 áp dụng khi hết 30 phút chờ thanh toán).
+  - **Tự hoàn thành (I4, V08-11, T11):** `bookings.bookingStatus = CONFIRMED AND endAt + 24h <= now` (server time, A8) **VÀ không tồn tại incident `OPEN`/`IN_PROGRESS`/`DISPUTED` của booking đó** (kiểm tra **toàn bộ** incidents, index `{ bookingId, status }`; **D23 [CHỐT]** điều kiện này áp dụng cho **luồng job tự động** — luồng studio xác nhận thủ công là **[MỞ]**) → chuyển `COMPLETED` + tạo commission ORIGINAL (transaction, idempotent). Có incident chưa giải quyết → **KHÔNG hoàn thành**, giữ `CONFIRMED`, log.
   - Dọn `slotLocks` đã qua (`slotStartUtc < now − grace` và đơn không còn giữ) — idempotent.
 - Mỗi lần: **update có điều kiện**, **giờ server** (16.4), **idempotent** (chạy lặp không lỗi, 16.4/16.6). Không cài/triển khai job trong giai đoạn tài liệu này (A4: "chưa cài hoặc triển khai job").
 
@@ -695,6 +725,29 @@ Quy ước key idempotencyKey theo 2A.3 giữ nguyên (sec 2.9/2.10), không tha
 | S8 | **Job auto-complete:** khi lỗi transient/write conflict → **5 lần retry bổ sung sau lần thực thi đầu tiên (= tối đa 6 lần thực thi trong một chuỗi thử lại)**; backoff tăng dần, **cấu hình ở tầng job**; **hết retry → bỏ qua booking trong chu kỳ hiện tại, chờ chu kỳ job tiếp theo**; không thêm trường retry vào schema `bookings`; điều kiện tự hoàn tất không thay đổi (patch 2C.1) | sec 9 |
 
 Quy tắc kỹ thuật bổ trợ (rule A–D, 2A.1): ghi rõ trong sec 5b (thanh toán/hoàn tiền, slotLocks, partial filter, phân định trạng thái).
+
+### 10.7 **Thiết kế model Booking (giai đoạn 2C.2 / 2B.2) — theo FINAL SOURCE ALIGNMENT**
+Nhóm D10–D24 tại `docs/technical-decisions.md` (2C.2); chi tiết thiết kế tại sec 2.7 (field + ví dụ JSON), sec 4 (snapshot), sec 9 (quy tắc chuyển trạng thái). Bảng này **giữ nguyên nhãn trạng thái** của từng quyết định — **[CHỐT]** đã phê duyệt, **[MỞ]** cần quyết định, **[SUY LUẬN]** đề xuất chưa duyệt, **[TÀI LIỆU]** theo đặc tả v0.8:
+
+| # | Nội dung / trạng thái | Vị trí |
+|---|---|---|
+| D10 | **[CHỐT]** add-on gắn từng dòng phòng + phải lưu Snapshot. **[MỞ]** cấu trúc sub-schema cụ thể. **[SUY LUẬN]** ví dụ `{ serviceId, nameSnapshot, quantity, unitPriceSnapshot, lineAmountSnapshot }` | sec 2.7, 4 |
+| D11 | **[CHỐT]** snapshot cả `quantity` + `durationMinutes`; hai khái niệm riêng biệt. **[MỞ]** ý nghĩa chính xác của `quantity` (không suy luận là số lượng dịch vụ); PACKAGE có mặc định quantity = 1 hay không | sec 2.7 |
+| D12 | **[TÀI LIỆU]** CORE-03 là chính sách hiệu lực, đủ mọi trường hợp + trách nhiệm admin theo dõi/xử lý quá hạn, thất bại, tranh chấp. **[MỞ]** Object hay chuỗi — chưa có schema chính thức | sec 2.7, 4 |
+| D13 | **[MỞ]** nguồn chính sách hủy: nền tảng cố định hay Studio cấu hình — chưa chốt. **[CHỐT]** giá trị tại tạo đơn lưu trong `policySnapshot` (immutable) | sec 4 |
+| D14 | **[CHỐT]** unique index giữ; không yêu cầu mã tuần tự; không counters; không vượt 14 collections. **[SUY LUẬN / MỞ]** thuật toán sinh mã cụ thể — chưa chốt | sec 2.7, 3 |
+| D15 | **[CHỐT]** `remainingAmount` cố định tại tạo đơn (`total − deposit`); không cập nhật theo giao dịch; tiền thực tế lấy từ Payment records; refund là record riêng không âm | sec 2.7, 4 |
+| D16 | **[CHỐT]** model Booking dùng `timestamps: true` (khác `auditLogs` D9/S3: không có `updatedAt`) | sec 2.7, 2.14 |
+| D17 | **[MỞ]** quyết định "Service truyền rõ ba trạng thái khởi tạo" chưa phê duyệt; giá trị `PENDING_STUDIO`/`DEPOSIT_PENDING`/`NONE` trong ví dụ **chỉ là minh họa, không phải default đã đặc tả** | sec 2.7 |
+| D18 | ⚠️ **ĐÃ BỊ THAY THẾ bởi D24** — nội dung gốc ("xóa field `depositRate` top-level") không còn hiệu lực. **[MỞ]** pre-validate hai giá trị bằng nhau (S7-pre) | sec 2.7, 4 |
+| D19 | **[MỞ]** khách có được tự hủy ở `PENDING_STUDIO` hay không — chưa chốt. **[TÀI LIỆU/D7]** nếu hủy: xóa SlotLock cùng transaction, giữ booking, không Refund khi chưa có tiền thực tế | sec 9 |
+| D20 | **[MỞ]** khách có được tự hủy ở `AWAITING_PAYMENT` hay không — chưa chốt; **[MỞ]** xử lý Payment DEPOSIT PENDING/CONFIRMED khi khách hủy. **[TÀI LIỆU/CORE-01]** hết 30 phút → EXPIRED + xóa SlotLock | sec 9 |
+| D21 | **[TÀI LIỆU/CORE-03]** ≥24h → hoàn 100%; <24h → không hoàn; studio hủy sau thu cọc → hoàn đủ 3 ngày làm việc; nền tảng theo dõi, admin xử lý quá hạn/thất bại/tranh chấp; Booking/Payment/Refund giữ lịch sử độc lập | sec 9 |
+| D22 | **[TÀI LIỆU/CORE-02]** tiền đến sau EXPIRED → giữ EXPIRED, không khôi phục, không tái chiếm slot, ghi nhận giao dịch đến muộn, đối soát/hoàn thủ công, admin xử lý theo CORE-03. **[CHỐT]** không thêm purpose/state payment mới. **[MỞ]** tỷ lệ 100% + 3 ngày riêng cho tiền đến muộn — chưa duyệt | sec 9, 2.9 |
+| D23 | **[CHỐT — job tự động (T11)]** giữ điều kiện Incident chưa giải quyết (`OPEN`/`IN_PROGRESS`/`DISPUTED`) → chỉ khi tất cả `RESOLVED` mới hoàn thành. **[MỞ — studio xác nhận thủ công]** chưa có căn cứ. **[CHỐT]** giữ RC1/RC2 (7 × 24h sau `completedAt`, không quay COMPLETED → CONFIRMED, `$inc incidentRevision` cùng transaction) | sec 9 |
+| D24 | **[CHỐT]** **Giữ CẢ HAI** `bookings.depositRate` (top-level) **và** `bookings.policySnapshot.depositRate`. **[MỞ]** pre-validate hai giá trị bằng nhau (S7-pre) | sec 2.7, 4 |
+
+Giới hạn 2C.2: chỉ cập nhật tài liệu thiết kế; **không thêm collection mới (giữ I1 = 14)**, không thay đổi các quyết định đã chốt trước (A1–A9, M1–M6, I1–I5, RC1/RC2, CN1/IK1, D1–D9, **D7**), không sửa model Group 1.
 
 ## 11. Rủi ro quan trọng nhất (tóm tắt)
 
